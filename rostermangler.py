@@ -307,16 +307,33 @@ def roster_merge(roster_input, mailchimp_export):
             writer.writerow(row)
 
 
+def filter_min_age(families, min_age):
+    "Removes entries where the member minimum age is below the threshold"
+    filtered = []
+    num_members = 0
+    for fam in families:
+        filtered_members = [m for m in fam.children if m.age >= min_age]
+        if filtered_members:
+            filtered.append(Family(fam.parents, filtered_members))
+            num_members += len(filtered_members)
+    return filtered, num_members
+
+
 def print_table_row(heading, value, l_padding=" "*4):
     "Prints something in HTML table row brackets"
     if value:
         print(f"{l_padding}<tr><th>{heading}</th><td>{value}</td></tr>")
 
 
-def roster(ods_file_name):
+def roster(ods_file_name, full_html=False, member_min_age=None):
     "Make a pretty roster out of the state 4-H Export"
     families = get_families_from_ucnar_ods(ods_file_name)
+    if member_min_age:
+        families, num_members = filter_min_age(families, member_min_age)
+        print(f"{num_members} after filter")
     families.sort(key=lambda fam: fam.family_name)
+    if full_html:
+        print('<html><body>')
     for fam in families:
         print('<div class="roster_family" id="{0}"><a name="{0}"></a>'.format(fam.family_name))
         indiv = fam.individual
@@ -356,17 +373,21 @@ def roster(ods_file_name):
             print("      </table></td></tr>")
             print("  </table>")
         print("</div>")
+    if full_html:
+        print('</body></html>')
 
 def main():
     "Program entry point"
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--merge", nargs=2, help="Merge state 4-H export and Mailchimp Export")
     parser.add_argument("-r", "--roster", help="Make a pretty roster out of the state 4-H Export")
+    parser.add_argument("-b", "--html", action="store_true", help="Wrap output in full HTML")
+    parser.add_argument("--age_filter", type=int, help="Filter roster to only members over given age.")
     args = parser.parse_args()
     if args.merge:
         roster_merge(args.merge[0], open(args.merge[1], 'rt'))
     if args.roster:
-        roster(args.roster)
+        roster(args.roster, args.html, args.age_filter)
 
 
 if __name__ == '__main__':
