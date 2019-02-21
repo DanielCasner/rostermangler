@@ -330,7 +330,7 @@ def roster(ods_file_name, full_html=False, member_min_age=None):
     families = get_families_from_ucnar_ods(ods_file_name)
     if member_min_age:
         families, num_members = filter_min_age(families, member_min_age)
-        print(f"{num_members} after filter")
+        print(f"{num_members} members in {len(families)} families after filter", file=sys.stderr)
     families.sort(key=lambda fam: fam.family_name)
     if full_html:
         print('<html><body>')
