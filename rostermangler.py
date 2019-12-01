@@ -239,7 +239,8 @@ def get_families_from_ucnar_ods(ods_file):
             families.append(Family(parents=[adult]))
     return families
 
-def get_members_and_volunteers(ods_file):
+
+def get_members_and_volunteers_from_ucnar_ods(ods_file):
     "Get members and adult volunteers list from ODS excport."
     sheet = pyexcel_ods.get_data(ods_file)
     members = sheet['Members']
@@ -249,6 +250,28 @@ def get_members_and_volunteers(ods_file):
     adult_keys = adults.pop(0)
     adults_email_dict = {row[1]: row for row in members if row}
     return member_keys, members_email_dict, adult_keys, adults_email_dict
+
+
+
+def get_members_and_adults_from_csv(csv_file):
+    "Get members and adults from Del Arroyo CSV file format"
+    sheet = list(csv.reader(csv_file, delimiter=","))
+    sheet_keys = sheet.pop(0)
+    email_col = sheet_keys.index("Family: Family Email")
+    email_dict = {row[email_col].lower(): row for row in sheet if row}
+    return sheet_keys, email_dict
+
+
+def get_wordpress_data(wordpress_csv, filter_activated=False):
+    "Load a list of families from Wordpress user export"
+    sheet = list(csv.reader(wordpress_csv, delimiter=","))
+    sheet_keys = sheet.pop(0)
+    email_col = sheet_keys.index('Email')
+    act_col = sheet_keys.index('Activated?')
+    email_dict = {row[email_col].lower(): row for row in sheet if (row and
+                                                          (filter_activated is False or
+                                                           row[act_col] == filter_activated))}
+    return sheet_keys, email_dict
 
 
 def get_mailchip_data(mailchimp_csv):
@@ -376,6 +399,29 @@ def roster(ods_file_name, full_html=False, member_min_age=None):
     if full_html:
         print('</body></html>')
 
+
+def user_update(wp_users, members, new_users, remove_users):
+    """Accepts a CSV of current WP users, a CSV of current club members
+    Outputs two new CSVs, one of users to be added, and one of users to remove"""
+    with open(wp_users, "rt") as fh:
+        wp_keys, wp_users = get_wordpress_data(fh)
+        wp_username_col = wp_keys.index("Choose a Username")
+        wp_usernames = [user[wp_username_col].lower() for user in wp_users.values()]
+    with open(members, "rt") as fh:
+        roster_keys, roster_users = get_members_and_adults_from_csv(fh)
+    new_emails = [em for em in roster_users.keys() if em not in wp_users.keys()]
+    remove_emails = [em for em in wp_users.keys() if em not in roster_users.keys()]
+    with open(new_users, "wt") as fh:
+        for em in new_emails:
+            username = roster_users[em][roster_keys.index("Member: Last Name")]
+            if username.lower() not in wp_usernames:
+                fh.write(f"{username}, {em}{os.linesep}")
+    with open(remove_users, "wt") as fh:
+        for em in remove_emails:
+            fh.write(em)
+            fh.write(os.linesep)
+
+
 def main():
     "Program entry point"
     parser = argparse.ArgumentParser()
@@ -383,11 +429,15 @@ def main():
     parser.add_argument("-r", "--roster", help="Make a pretty roster out of the state 4-H Export")
     parser.add_argument("-b", "--html", action="store_true", help="Wrap output in full HTML")
     parser.add_argument("--age_filter", type=int, help="Filter roster to only members over given age.")
+    parser.add_argument("-u", "--users", nargs=4, help="Accept current WP user list, latest membership" \
+                        "and generate add and remove sheets")
     args = parser.parse_args()
     if args.merge:
         roster_merge(args.merge[0], open(args.merge[1], 'rt'))
     if args.roster:
         roster(args.roster, args.html, args.age_filter)
+    if args.users:
+        user_update(*args.users)
 
 
 if __name__ == '__main__':
