@@ -19,10 +19,10 @@ class Person:
         if last_name_first_name:
             self.last_name, self.first_name = last_name_first_name.split(', ')
         else:
-            self.first_name = first_name
-            self.last_name = last_name
-        self.phone = phone
-        self.email = email.lower()
+            self.first_name = first_name.strip()
+            self.last_name = last_name.strip()
+        self.phone = phone.strip()
+        self.email = email.lower().strip()
         try:
             self.age = int(age)
         except ValueError:
@@ -142,9 +142,14 @@ class Family:
         return [phone for phone, count in phones.most_common(2) if count > 1 and phone]
 
     @property
+    def all_emails(self):
+        "Return all emails in this family"
+        return [p.email for p in self.parents + self.children if p.email.strip()]
+
+    @property
     def family_email(self):
         "Return common family email address if there is one"
-        emails = collections.Counter([p.email for p in self.parents + self.children])
+        emails = collections.Counter(self.all_emails)
         return [email for email, count in emails.most_common(2) if count > 1 and email]
 
     @property
@@ -318,52 +323,52 @@ def get_mailchip_data(mailchimp_csv):
     return sheet_keys, email_dict
 
 
-def extra_in_mailchimp(mailchimp_email_dict, members_email_dict, adults_email_dict):
+def extra_in_mailchimp(mailchimp_email_dict, families):
     "Find the email rows that are extra in mailchimp"
-    known_emails = set(members_email_dict.keys())
-    known_emails.update(adults_email_dict.keys())
-    print(known_emails)
+    known_emails = set()
+    for fam in families:
+        known_emails.update(fam.all_emails)
     unknown = []
     for email, row in mailchimp_email_dict.items():
-        if email not in known_emails:
+        if email.lower().strip() not in known_emails:
             unknown.append(row)
     return unknown
 
 
-def missing_from_mailchimp(mailchimp_email_dict, members_email_dict, adults_email_dict):
+def missing_from_mailchimp(mailchimp_email_dict, families, strict):
     "Find emails that aren't in mailchimp"
-    missing_members = []
-    for email, row in members_email_dict.items():
-        if email not in mailchimp_email_dict.keys():
-            missing_members.append(row)
-    missing_adults = []
-    for email, row in adults_email_dict.items():
-        if email not in mailchimp_email_dict.keys():
-            missing_adults.append(row)
-    return missing_members, missing_adults
+    missing_families = set()
+    for fam in families:
+        for email in fam.all_emails:
+            if strict:
+                if email not in mailchimp_email_dict.keys():
+                    missing_families.add(fam)
+            else:
+                if email in mailchimp_email_dict.keys():
+                    break
+        else:
+            if not strict:
+                missing_families.add(fam)
+    return missing_families
 
 
-def roster_merge(roster_input, mailchimp_export):
+def roster_merge(roster_input, mailchimp_export, strict=False):
     "Program entry"
     # Parse inputs
-    member_keys, members_email_dict, adult_keys, adults_email_dict = get_members_and_volunteers(roster_input)
+    families = get_families_from_ucnar_ods(roster_input)
     mailchimp_sheet_keys, mailchimp_email_dict = get_mailchip_data(mailchimp_export)
     # Make possible remove output
-    possible_rm = extra_in_mailchimp(mailchimp_email_dict, members_email_dict, adults_email_dict)
+    possible_rm = extra_in_mailchimp(mailchimp_email_dict, families)
     with open("possible_remove.csv", "wt") as possible_rm_file:
         writer = csv.writer(possible_rm_file, delimiter=",")
         for row in possible_rm:
             writer.writerow(row)
     # Make possible add output
-    possible_add_members, possible_add_adults = missing_from_mailchimp(mailchimp_email_dict,
-                                                                       members_email_dict,
-                                                                       adults_email_dict)
+    possible_add_families = missing_from_mailchimp(mailchimp_email_dict, families, strict)
     with open("possible_add.csv", "wt") as possible_add_file:
         writer = csv.writer(possible_add_file, delimiter=",")
-        for row in possible_add_members:
-            writer.writerow(row)
-        for row in possible_add_adults:
-            writer.writerow(row)
+        for fam in possible_add_families:
+            writer.writerow([fam.family_name] + list(set(fam.all_emails)))
 
 
 def filter_min_age(families, min_age):
@@ -464,12 +469,13 @@ def main():
     parser.add_argument("-m", "--merge", nargs=2, help="Merge state 4-H export and Mailchimp Export")
     parser.add_argument("-r", "--roster", help="Make a pretty roster out of the state 4-H Export")
     parser.add_argument("-b", "--html", action="store_true", help="Wrap output in full HTML")
+    parser.add_argument("-s", "--strict", action="store_true", help="Make sure everyone in a family is subscribed to newsletter")
     parser.add_argument("--age_filter", type=int, help="Filter roster to only members over given age.")
     parser.add_argument("-u", "--users", nargs=4, help="Accept current WP user list, latest membership"
                         "and generate add and remove sheets")
     args = parser.parse_args()
     if args.merge:
-        roster_merge(args.merge[0], open(args.merge[1], 'rt'))
+        roster_merge(args.merge[0], open(args.merge[1], 'rt'), args.strict)
     if args.roster:
         roster(args.roster, args.html, args.age_filter)
     if args.users:
