@@ -6,7 +6,6 @@ import os
 import csv
 import pyexcel_ods
 import collections
-import re
 import argparse
 
 
@@ -14,7 +13,7 @@ class Person:
     "Structure for data about a single member or volunteer"
     MIN_AGE = 5
 
-    def __init__(self, first_name="", last_name="", last_name_first_name=None, phone="", email="", age=0, \
+    def __init__(self, first_name="", last_name="", last_name_first_name=None, phone="", email="", age=0,
                  nickname=None, role=None, address=None, city=None):
         "Initalize structure"
         if last_name_first_name:
@@ -74,14 +73,15 @@ class Person:
             elif resolve == "replace":
                 setattr(this, field, getattr(other, field))
             else:
-                raise ValueError(f"Update conflict {field}: this={getattr(this, field)!r}, other={getattr(other, field)!r}")
+                raise ValueError(f"Update conflict {field}: this={getattr(this, field)!r},"
+                                 f"other={getattr(other, field)!r}")
         else:
             setattr(this, field, getattr(other, field))
 
     def update(self, other):
         "Update this object with missing information from another one"
         if self != other:
-            raise ValueError(f"Attempting to update \"{self.first_name} {self.last_name}\" from "\
+            raise ValueError(f"Attempting to update \"{self.first_name} {self.last_name}\" from "
                              f"\"{other.first_name} {other.last_name}\"")
         else:
             self._update_attr(self, other, "phone")
@@ -90,6 +90,7 @@ class Person:
             self._update_attr(self, other, "role", "concat")
             self._update_attr(self, other, "address")
             self._update_attr(self, other, "city")
+
 
 class Family:
     "Representation of a family group"
@@ -188,10 +189,15 @@ class Family:
         return False
 
 
+def get_cell(row, keys, key):
+
+
+
 def get_adult_volunteers_as_people(sheet, keys):
     "Return a list of People structures from Adult Volunteers sheet"
-    return [Person(last_name_first_name=row[0], email=row[1], role=row[2], city=row[5].split(',')[0]) \
+    return [Person(last_name_first_name=row[0], email=row[1], role=row[2], city=row[5].split(',')[0])
             for row in sheet if len(row) > 5]
+
 
 def get_members_as_families(sheet, keys):
     "Return a list of Family data structures from Members sheet"
@@ -217,18 +223,28 @@ def get_members_as_families(sheet, keys):
     return families
 
 
+def keys_row_to_keys_dict(keys):
+    "Converts a row of key values into a dict of the column indecies"
+    return {k.strip(): i for k, i in enumerte(keys)}
+
+
 def get_families_from_ucnar_ods(ods_file):
     "Convert an UCNAR export ODS file into a list of Family data structures"
     # Crack open the workbook file
     book = pyexcel_ods.get_data(ods_file)
     members_sheet = book['Members']
-    member_keys = members_sheet.pop(0)
-    adults_sheet = book['Adult Volunteers']
-    adult_keys = adults_sheet.pop(0)
+    member_keys = keys_row_to_keys_dict(members_sheet.pop(0))
+    try:
+        adults_sheet = book['Adult Volunteers']
+    except KeyError:
+        sys.stderr.write("No adult volunteers sheet")
+        adults = []
+    else:
+        adult_keys = keys_row_to_keys_dict(adults_sheet.pop(0))
+        # Parse the adult voluteers sheet
+        adults = get_adult_volunteers_as_people(adults_sheet, adult_keys)
     # Parse the members sheet
     families = get_members_as_families(members_sheet, member_keys)
-    # Parse the adult voluteers sheet
-    adults = get_adult_volunteers_as_people(adults_sheet, adult_keys)
     # Unify the results
     for adult in adults:
         for family in families:
@@ -252,7 +268,6 @@ def get_members_and_volunteers_from_ucnar_ods(ods_file):
     return member_keys, members_email_dict, adult_keys, adults_email_dict
 
 
-
 def get_members_and_adults_from_csv(csv_file):
     "Get members and adults from Del Arroyo CSV file format"
     sheet = list(csv.reader(csv_file, delimiter=","))
@@ -269,8 +284,8 @@ def get_wordpress_data(wordpress_csv, filter_activated=False):
     email_col = sheet_keys.index('Email')
     act_col = sheet_keys.index('Activated?')
     email_dict = {row[email_col].lower(): row for row in sheet if (row and
-                                                          (filter_activated is False or
-                                                           row[act_col] == filter_activated))}
+                                                                   (filter_activated is False or
+                                                                    row[act_col] == filter_activated))}
     return sheet_keys, email_dict
 
 
@@ -429,7 +444,7 @@ def main():
     parser.add_argument("-r", "--roster", help="Make a pretty roster out of the state 4-H Export")
     parser.add_argument("-b", "--html", action="store_true", help="Wrap output in full HTML")
     parser.add_argument("--age_filter", type=int, help="Filter roster to only members over given age.")
-    parser.add_argument("-u", "--users", nargs=4, help="Accept current WP user list, latest membership" \
+    parser.add_argument("-u", "--users", nargs=4, help="Accept current WP user list, latest membership"
                         "and generate add and remove sheets")
     args = parser.parse_args()
     if args.merge:
