@@ -23,7 +23,10 @@ class Person:
             self.last_name = last_name
         self.phone = phone
         self.email = email.lower()
-        self.age = age
+        try:
+            self.age = int(age)
+        except ValueError:
+            self.age = 0
         self.nickname = nickname
         self.role = role
         self.address = address
@@ -62,7 +65,7 @@ class Person:
     @property
     def valid(self):
         "Check if this person is real or just blank"
-        return self.first_name and self.last_name
+        return self.first_name.strip() and self.last_name.strip()
 
     @staticmethod
     def _update_attr(this, other, field, resolve=None):
@@ -190,7 +193,11 @@ class Family:
 
 
 def get_cell(row, keys, key):
-
+    "Use an index dictionary to retrieve the right column from a row"
+    ind = keys[key]
+    if len(row) > ind:
+        return row[ind]
+    return ""
 
 
 def get_adult_volunteers_as_people(sheet, keys):
@@ -203,12 +210,25 @@ def get_members_as_families(sheet, keys):
     "Return a list of Family data structures from Members sheet"
     families = []
     for row in sheet:
-        if len(row) < 12:
+        if len(row) < 3:
             continue
-        member = Person(last_name_first_name=row[0], email=row[1], phone=row[2], address=row[3], city=row[4],
-                        age=int(row[12]))
-        parent1 = Person(row[5], row[6], phone=row[7])
-        parent2 = Person(row[8], row[9], phone=row[10], email=row[11])
+        member = Person(last_name=get_cell(row, keys, "Member: Last Name"),
+                        first_name=get_cell(row, keys, "Member: First Name"),
+                        email=get_cell(row, keys, "Member: Email"),
+                        phone=get_cell(row, keys, "Member: Primary Phone"),
+                        address=get_cell(row, keys, "Family: Address"),
+                        city=get_cell(row, keys, "Family: City"),
+                        age=get_cell(row, keys, "Member: Age"))
+        if not member.valid:
+            continue
+        parent1 = Person(get_cell(row, keys, "Member: Parent 1 First Name"),
+                         get_cell(row, keys, "Member: Parent 1 Last Name"),
+                         email=get_cell(row, keys, "Family: Family Email"),
+                         phone=get_cell(row, keys, "Member: Parent 1 Cell Phone"))
+        parent2 = Person(get_cell(row, keys, "Member: Parent 2 First Name"),
+                         get_cell(row, keys, "Member: Parent 2 Last Name"),
+                         email=get_cell(row, keys, "Member: Parent 2 Email"),
+                         phone=get_cell(row, keys, "Member: Parent 2 Home Phone"))
         for family in families:
             if family.has_parent(parent1.first_name, parent1.last_name) or \
                family.has_parent(parent2.first_name, parent2.last_name):
@@ -217,7 +237,8 @@ def get_members_as_families(sheet, keys):
                 family.add_or_update_parent(parent2)
                 break
         else:
-            families.append(Family([parent1, parent2], [member]))
+            new_fam = Family([parent1, parent2], [member])
+            families.append(new_fam)
     for fam in families:
         fam.sort()
     return families
@@ -225,7 +246,7 @@ def get_members_as_families(sheet, keys):
 
 def keys_row_to_keys_dict(keys):
     "Converts a row of key values into a dict of the column indecies"
-    return {k.strip(): i for k, i in enumerte(keys)}
+    return {k.strip(): i for i, k in enumerate(keys)}
 
 
 def get_families_from_ucnar_ods(ods_file):
